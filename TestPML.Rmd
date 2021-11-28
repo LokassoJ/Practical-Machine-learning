@@ -1,0 +1,171 @@
+---
+title: "PML"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Overview 
+this document is a final assignment for Practical Machine Learning. data from the from accelorometeres on the belt, arm, and dumbell of 6 participants are used for the exercise.
+We train different models: Decision Tree, Random Forest, Gradient Boosted Trees, Support Vector Machine using k-folds cross validation on the training set. We then predict using a validation set randomly selected from the training csv data to obtain the accuracy and out of sample error rate. Based on those numbers, we decide on the best model, and use it to predict 20 cases using the test csv set.
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+# Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+
+```{r chk1}
+library(corrplot)
+library(ggplot2)
+library(caret)
+library(kernlab)
+library(rattle)
+set.seed(1234)
+```
+
+# Loading Data and Libraries
+
+```{r chk2}
+trainingData<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testData<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+dim(trainingData)
+dim(testData)
+```
+training dataset contains 19622 observations and the 160 variables while the test data set contains only 20 observations.
+
+# Cleaning the dataset
+The goal is to get rid of unnecessary variables, mainly variables with NA observations.
+
+```{r chk3}
+trainingData<- trainingData[, colSums(is.na(trainingData)) == 0]
+testData <- testData[, colSums(is.na(testData)) == 0]
+trainingData<- trainingData[, -c(1:7)]
+testData<- testData[, -c(1:7)]
+dim(trainingData)
+dim (testData)
+
+```
+
+Now let remove the near Zero variance
+
+```{r chk4}
+trainingData<-trainingData[,-nearZeroVar(trainingData)]
+dim(trainingData)
+```
+removing Zero Covariates
+after removing the unnecessary variables, we will split the training set into  validation and ad sub set of training.
+
+```{r chk5}
+inTrain<-createDataPartition(trainingData$classe,p=0.7, list=F)
+training<-trainingData[inTrain,]
+testing<-trainingData[-inTrain,]
+```
+
+# Creating and testing the model
+we have selected  : Decisions trees, Random Forest, Gradient Boosted Tress and SVM.
+first we set up a control for training to use 3-fold cross validation.
+```{r chk6}
+control<-trainControl(method="cv", number=3, verboseIter= F)
+```
+
+# Decision Tree
+
+Model: 
+```{r chk7}
+set.seed(1234)
+modelTree<-train(classe~., data=training, method="rpart", trControl=control, tuneLength=5)
+fancyRpartPlot(modelTree$finalModel)
+```
+
+Prediction:
+```{r chk8}
+predTree<-predict(modelTree,testing)
+ConfMatrixTree<-confusionMatrix(predTree,factor(testing$classe))
+ConfMatrixTree
+```
+
+# Random Forest
+```{r chk9}
+
+modelRF<-train(classe~., data=training, method="rf", trControl=control, tuneLength=5)
+predRF<-predict(modelRF,testing)
+ConfMatrixRF<-confusionMatrix(predRF,factor(testing$classe))
+ConfMatrixRF
+```
+
+# Gradient Boosted Trees
+
+```{r chk10}
+
+modelGBM<-train(classe~., data=training, method="gbm", trControl=control, tuneLength=5, verbose= F)
+predGBM<-predict(modelGBM,testing)
+ConfMatrixGBM<-confusionMatrix(predGBM,factor(testing$classe))
+ConfMatrixGBM
+```
+
+# Support Vector Machine
+
+```{r chk11}
+modelSVM<-train(classe~., data=training, method="svmLinear", trControl=control, tuneLength=5, verbose= F)
+predSVM<-predict(modelSVM,testing)
+ConfMatrixSVM<-confusionMatrix(predSVM,factor(testing$classe))
+ConfMatrixSVM
+```
+# Results (Accuracy and Out of Sample Error)
+
+```{r chk12}
+x1<-rbind(RF= ConfMatrixRF$overall[[1]],GBM= ConfMatrixGBM$overall[[1]],TREE= ConfMatrixTree$overall[[1]],SVM= ConfMatrixSVM$overall[[1]])
+x2<-1-x1
+x3<-cbind(x1,x2)
+Results<-as.data.frame(x3)
+names(Results)<-c("Accuracy","Out_of_Sample_Error")
+Results
+```
+as the table above shows, the best model is the random forest with highest accuracy and lowest out of sample error rate.
+We find this model as basis for using to our test sets.
+
+# Predictions on Test Set
+```{r chk13}
+Results <- predict(modelRF, newdata=testData)
+Results
+```
+
+# Appendix
+Correlation matrix of variables in training set
+```{r chk14}
+MyCorrPlot<-cor(training[,-length(names(training))])
+corrplot(MyCorrPlot,method="color")
+```
+
+
+Plotting the subsequent models
+TREE
+```{r chk15}
+plot(modelTree)
+```
+
+
+RANDOM FOREST
+
+```{r chk16}
+plot(modelRF)
+```
+
+GRADIENT BOOSTED MODEL
+
+```{r chk17}
+plot(modelGBM)
+```
